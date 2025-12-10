@@ -68,5 +68,5 @@ Then go to the framework base directory and issue the following command to run t
 
 ## Requirements
 + PHP ^8.3
-+ MariaDB ^10.4
++ MariaDB ^10.4 or PostgreSQL ^13
 + Composer ^2.2
