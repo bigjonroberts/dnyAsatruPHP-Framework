@@ -1,0 +1,27 @@
+services:
+  php:
+    image: mcr.microsoft.com/devcontainers/php:8.3
+    volumes:
+      - ..:/workspace:cached
+    depends_on:
+      - mysql
+      - postgres
+
+  mysql:
+    image: mariadb:10.11
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: asatru_test
+      MYSQL_USER: asatru
+      MYSQL_PASSWORD: asatru
+    ports:
+      - "3306:3306"
+
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_DB: asatru_test
+      POSTGRES_USER: asatru
+      POSTGRES_PASSWORD: asatru
+    ports:
+      - "5432:5432"

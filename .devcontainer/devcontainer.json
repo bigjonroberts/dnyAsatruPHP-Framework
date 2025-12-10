@@ -1,0 +1,20 @@
+{
+  "name": "Asatru PHP Framework",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "php",
+  "workspaceFolder": "/workspace",
+  "features": {
+    "ghcr.io/devcontainers/features/php:1": {
+      "version": "8.3",
+      "installComposer": true
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bmewburn.vscode-intelephense-client"
+      ]
+    }
+  },
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y libpq-dev default-libmysqlclient-dev && sudo docker-php-ext-configure pdo_mysql --with-pdo-mysql=/usr && sudo docker-php-ext-install pdo_mysql pdo_pgsql pgsql && composer install"
+}
