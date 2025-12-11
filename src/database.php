@@ -19,7 +19,6 @@ namespace Asatru\Database {
         private $handle = null;
         private $command = null;
         private $name = null;
-        private $column_name = null;
         private $column_base = null;
         private $column_nullable = false;
         private $column_default = null;
@@ -30,18 +29,6 @@ namespace Asatru\Database {
         private $column_charset = null;
         private $column_comment = null;
         private $column_after = null;
-        private $postCreateStatements = [];
-
-        /**
-         * Map MySQL collations to PostgreSQL equivalents
-         */
-        private static $collationMap = [
-            'utf8mb4_unicode_ci' => '"und-x-icu"',
-            'utf8_unicode_ci' => '"und-x-icu"',
-            'utf8mb4_general_ci' => '"C"',
-            'utf8_general_ci' => '"C"',
-            'latin1_swedish_ci' => '"C"',
-        ];
 
         /**
          * Initialize table creation
@@ -60,16 +47,11 @@ namespace Asatru\Database {
 
             if ($_ENV['DB_DRIVER'] === 'mysql') {
                 $this->handle->exec('USE `' . $_ENV['DB_DATABASE'] . '`;');
-            } else if ($_ENV['DB_DRIVER'] === 'pgsql') {
-                // PostgreSQL uses search_path for schema; database is already selected in DSN
-                if (isset($_ENV['DB_SCHEMA']) && strlen($_ENV['DB_SCHEMA']) > 0) {
-                    $this->handle->exec('SET search_path TO ' . $_ENV['DB_SCHEMA'] . ';');
-                }
-            }
 
-            $error = $this->handle->errorInfo();
-            if ($error[0] !== '00000') {
-                throw new \Exception('SQL error: ' . $error[0] . ':' . $error[1] . ' -> ' . $error[2]);
+                $error = $this->handle->errorInfo();
+                if ($error[0] !== '00000') {
+                    throw new \Exception('SQL error: ' . $error[0] . ':' . $error[1] . ' -> ' . $error[2]);
+                }
             }
 
             $this->command = 'CREATE TABLE ' . $name . ' (';
@@ -114,7 +96,6 @@ namespace Asatru\Database {
                 throw new \Exception('Starting new column while the last has not finished yet: ' . $this->column_base);
             }
 
-            $this->column_name = $name;
             $this->column_base = $name . ' ' . $type;
 
             if ($size !== null) {
@@ -296,32 +277,18 @@ namespace Asatru\Database {
                 throw new \Exception('New column has not been started yet');
             }
 
-            $isPostgres = (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql');
             $expression = $this->column_base;
 
-            // CHARACTER SET - MySQL only (PostgreSQL sets charset at database level)
-            if ($this->column_charset !== null && !$isPostgres) {
+            if ($this->column_charset !== null) {
                 $expression .= ' CHARACTER SET ' . $this->column_charset;
             }
 
-            // COLLATE - Map MySQL collations to PostgreSQL equivalents
             if ($this->column_collation !== null) {
-                if ($isPostgres) {
-                    // Map common MySQL collations to PostgreSQL, or pass through as-is
-                    $pgCollation = self::$collationMap[$this->column_collation] ?? '"' . $this->column_collation . '"';
-                    $expression .= ' COLLATE ' . $pgCollation;
-                } else {
-                    $expression .= ' COLLATE ' . $this->column_collation;
-                }
+                $expression .= ' COLLATE ' . $this->column_collation;
             }
 
-            // UNSIGNED - PostgreSQL uses CHECK constraint
             if ($this->column_unsigned) {
-                if ($isPostgres) {
-                    $expression .= ' CHECK (' . $this->column_name . ' >= 0)';
-                } else {
-                    $expression .= ' UNSIGNED';
-                }
+                $expression .= ' UNSIGNED';
             }
 
             if ($this->column_nullable) {
@@ -330,41 +297,25 @@ namespace Asatru\Database {
                 $expression .= ' NOT NULL';
             }
 
-            // DEFAULT value - different quoting for MySQL vs PostgreSQL
             if ($this->column_default !== null) {
                 $expression .= ' DEFAULT ';
 
                 if (is_string($this->column_default)) {
-                    // Use single quotes for string literals (both MySQL and PostgreSQL)
-                    $escaped = $isPostgres
-                        ? str_replace("'", "''", $this->column_default)
-                        : str_replace("'", "\\'", $this->column_default);
-                    $expression .= '\'' . $escaped . '\'';
+                    $expression .= '`' . $this->column_default . '`';
                 } else {
                     if (gettype($this->column_default) == 'boolean') {
-                        if ($isPostgres) {
-                            $expression .= ($this->column_default) ? 'TRUE' : 'FALSE';
-                        } else {
-                            $expression .= ($this->column_default) ? '1' : '0';
-                        }
+                        $expression .= ($this->column_default) ? '1' : '0';
                     } else {
                         $expression .= strval($this->column_default);
                     }
                 }
             }
 
-            // COMMENT - PostgreSQL requires separate statement
             if ($this->column_comment !== null) {
-                if ($isPostgres) {
-                    $escapedComment = str_replace("'", "''", $this->column_comment);
-                    $this->postCreateStatements[] = 'COMMENT ON COLUMN "' . $this->name . '"."' . $this->column_name . '" IS \'' . $escapedComment . '\'';
-                } else {
-                    $expression .= ' COMMENT \'' . $this->column_comment . '\'';
-                }
+                $expression .= ' COMMENT \'' . $this->column_comment . '\'';
             }
 
-            // AUTO_INCREMENT - MySQL only (PostgreSQL uses SERIAL type)
-            if ($this->column_auto_increment && !$isPostgres) {
+            if ($this->column_auto_increment) {
                 $expression .= ' AUTO_INCREMENT';
             }
 
@@ -372,14 +323,12 @@ namespace Asatru\Database {
                 $expression .= ' PRIMARY KEY';
             }
 
-            // AFTER column - MySQL only (silently ignored for PostgreSQL)
-            if ($this->column_after !== null && !$isPostgres) {
+            if ($this->column_after !== null) {
                 $expression .= ' AFTER ' . $this->column_after;
             }
-
+            
             $this->add($expression);
 
-            $this->column_name = null;
             $this->column_base = null;
             $this->column_nullable = false;
             $this->column_default = null;
@@ -408,16 +357,6 @@ namespace Asatru\Database {
             if ($error[0] !== '00000') {
                 throw new \Exception('SQL error: ' . $error[0] . ':' . $error[1] . ' -> ' . $error[2]);
             }
-
-            // Execute post-create statements (PostgreSQL COMMENTs, etc.)
-            foreach ($this->postCreateStatements as $stmt) {
-                $this->handle->exec($stmt . ';');
-                $error = $this->handle->errorInfo();
-                if ($error[0] !== '00000') {
-                    throw new \Exception('SQL error in post-create: ' . $error[0] . ':' . $error[1] . ' -> ' . $error[2]);
-                }
-            }
-            $this->postCreateStatements = [];
         }
 
         /**
@@ -522,7 +461,17 @@ namespace Asatru\Database {
         public function get($ident)
         {
             if (isset($this->items[$ident])) {
-                return $this->items[$ident];
+                $value = $this->items[$ident];
+
+                // Handle PostgreSQL BYTEA columns returned as streams
+                if (is_resource($value) && get_resource_type($value) === 'stream') {
+                    // Read stream once and cache the result
+                    $contents = stream_get_contents($value);
+                    $this->items[$ident] = $contents;  // Cache for future calls
+                    return $contents;
+                }
+
+                return $value;
             }
 
             return null;
@@ -642,6 +591,8 @@ namespace Asatru\Database {
         private static $insert = array();
         private static $getcount = false;
         private static $params = array();
+        private static $columnTypeCache = array(); // Cache for column types (PostgreSQL schema inspection)
+        private static $paramColumns = array(); // Mapping of parameter index to column name
 
         /**
          * Create and return current instance
@@ -657,7 +608,7 @@ namespace Asatru\Database {
 
         /**
          * Set PDO handle
-         * 
+         *
          * @param \PDO $pdo
          * @return void
          */
@@ -667,13 +618,70 @@ namespace Asatru\Database {
         }
 
         /**
+         * Get column types for a table from information_schema (PostgreSQL only)
+         *
+         * @param string $tableName The table name
+         * @return array Column name => data type mapping
+         */
+        private static function getColumnTypes($tableName)
+        {
+            // Only needed for PostgreSQL
+            if (!isset($_ENV['DB_DRIVER']) || $_ENV['DB_DRIVER'] !== 'pgsql') {
+                return array();
+            }
+
+            // Check if handle is set
+            if (!self::$handle) {
+                return array();
+            }
+
+            // Check cache first
+            if (isset(self::$columnTypeCache[$tableName])) {
+                return self::$columnTypeCache[$tableName];
+            }
+
+            // Query information_schema for column types
+            try {
+                $query = "
+                    SELECT column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_name = ?
+                    AND table_schema = 'public'
+                ";
+
+                $stmt = self::$handle->prepare($query);
+                $stmt->bindValue(1, strtolower($tableName), \PDO::PARAM_STR);
+                $stmt->execute();
+
+                $columnTypes = array();
+                while ($row = $stmt->fetch(\PDO::FETCH_ASSOC)) {
+                    $columnTypes[$row['column_name']] = $row['data_type'];
+                }
+
+                // Cache the results
+                self::$columnTypeCache[$tableName] = $columnTypes;
+
+                return $columnTypes;
+            } catch (\Exception $e) {
+                // If schema query fails, return empty array (fallback to basic type detection)
+                return array();
+            }
+        }
+
+        /**
          * Determine the parameter type
-         * 
+         *
          * @param string $param The object to be checked
+         * @param string $columnType Optional column type from schema (e.g., 'bytea')
          * @return The constant specifying the data type
          */
-        public static function getParamType($param)
+        public static function getParamType($param, $columnType = null)
         {
+            // Check if this is a BYTEA column in PostgreSQL
+            if ($columnType === 'bytea') {
+                return \PDO::PARAM_LOB;
+            }
+
             switch (gettype($param)) {
                 case 'boolean':
                     return \PDO::PARAM_BOOL;
@@ -711,13 +719,29 @@ namespace Asatru\Database {
 
             $qry = str_replace('@THIS', get_called_class(), $qry);
 
+            // PostgreSQL doesn't support backticks - remove them for pgsql
+            if (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql') {
+                $qry = str_replace('`', '', $qry);
+            }
+
             $prp = self::$handle->prepare($qry);
 
             if ($opt !== null) {
+                // Get column types for schema-aware parameter binding (PostgreSQL BYTEA support)
+                $tableName = get_called_class();
+                $columnTypes = self::getColumnTypes($tableName);
+
                 foreach ($opt as $key => $item) {
-                    $prp->bindValue($key + 1, $item, self::getParamType($item));
+                    // Determine column type if we have parameter-to-column mapping
+                    $columnName = isset(self::$paramColumns[$key]) ? self::$paramColumns[$key] : null;
+                    $columnType = ($columnName && isset($columnTypes[$columnName])) ? $columnTypes[$columnName] : null;
+
+                    $prp->bindValue($key + 1, $item, self::getParamType($item, $columnType));
                 }
             }
+
+            // Clear parameter columns mapping after use
+            self::$paramColumns = array();
 
             $prp->execute();
 
@@ -1019,7 +1043,7 @@ namespace Asatru\Database {
 
         /**
          * Create update set clause
-         * 
+         *
          * @param string $ident The column name
          * @param mixed $value The value
          * @return Asatru\Database\Model
@@ -1031,6 +1055,10 @@ namespace Asatru\Database {
             } else {
                 self::$update .= ', ' . $ident . ' = ?';
             }
+
+            // Track parameter-to-column mapping for schema-aware binding
+            $paramIndex = count(self::$params);
+            self::$paramColumns[$paramIndex] = $ident;
 
             array_push(self::$params, $value);
 
@@ -1072,11 +1100,16 @@ namespace Asatru\Database {
                 $idents = '(';
                 $values = 'VALUES(';
 
+                // Build parameter-to-column mapping for schema-aware binding
+                self::$paramColumns = array();
+                $columnIndex = 0;
+
                 foreach (self::$insert as $value) {
                     $idents .= $value['ident'] . ',';
                     $values .= '?,';
 
                     array_push(self::$params, $value['value']);
+                    self::$paramColumns[$columnIndex++] = $value['ident'];
                 }
 
                 $idents = substr($idents, 0, strlen($idents)-1) . ')';
@@ -1276,30 +1309,7 @@ namespace {
 
             $objPdo = new \PDO('mysql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'] . ';charset=' . $_ENV['DB_CHARSET'], $_ENV['DB_USER'], $_ENV['DB_PASSWORD'], $dbconattr);
         } else if ($_ENV['DB_DRIVER'] === 'pgsql') {
-            // PostgreSQL connection
-            $dsn = 'pgsql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'];
-
-            $objPdo = new \PDO($dsn, $_ENV['DB_USER'], $_ENV['DB_PASSWORD']);
-
-            // Set client encoding (equivalent to MySQL charset)
-            if (isset($_ENV['DB_CHARSET']) && strlen($_ENV['DB_CHARSET']) > 0) {
-                $charset = $_ENV['DB_CHARSET'];
-                // Map common MySQL charset names to PostgreSQL
-                if ($charset === 'utf8mb4' || $charset === 'utf8') {
-                    $charset = 'UTF8';
-                }
-                $objPdo->exec("SET client_encoding TO '" . $charset . "'");
-            }
-
-            // Set timezone if specified
-            if ((isset($_ENV['APP_TIMEZONE'])) && (is_string($_ENV['APP_TIMEZONE'])) && (strlen($_ENV['APP_TIMEZONE']) > 0)) {
-                $objPdo->exec("SET TIME ZONE '" . $_ENV['APP_TIMEZONE'] . "'");
-            }
-
-            // Set search_path if schema specified
-            if (isset($_ENV['DB_SCHEMA']) && strlen($_ENV['DB_SCHEMA']) > 0) {
-                $objPdo->exec("SET search_path TO " . $_ENV['DB_SCHEMA']);
-            }
+            $objPdo = new \PDO('pgsql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'], $_ENV['DB_USER'], $_ENV['DB_PASSWORD'], $dbconattr);
         } else {
             throw new \Exception('Database driver ' . $_ENV['DB_DRIVER'] . ' is not supported');
         }
