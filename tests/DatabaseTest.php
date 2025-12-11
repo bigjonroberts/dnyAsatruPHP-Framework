@@ -23,40 +23,10 @@ final class DatabaseTest extends TestCase
 
     protected function setUp(): void
     {
-        global $objPdo, $objMigrationLoader;
-
-        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
-
-        if ($driver === 'pgsql') {
-            $dsn = 'pgsql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'];
-        } else {
-            $dsn = 'mysql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'];
-        }
-
-        $this->pdo = new \PDO($dsn, $_ENV['DB_USER'], $_ENV['DB_PASSWORD']);
-
-        // Set global PDO for migrate_fresh() and other helpers
-        $objPdo = $this->pdo;
-        $objMigrationLoader = new Asatru\Database\MigrationLoader($this->pdo);
+        $this->pdo = new \PDO('mysql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'], $_ENV['DB_USER'], $_ENV['DB_PASSWORD']);
 
         $this->mdl = TestModel::getInstance();
         $this->mdl->__setHandle($this->pdo);
-    }
-
-    public static function tearDownAfterClass(): void
-    {
-        // Drop test table after all tests complete
-        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
-
-        if ($driver === 'pgsql') {
-            $dsn = 'pgsql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'];
-        } else {
-            $dsn = 'mysql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'];
-        }
-
-        $pdo = new \PDO($dsn, $_ENV['DB_USER'], $_ENV['DB_PASSWORD']);
-        $mig = new Asatru\Database\Migration('TestModel', $pdo);
-        $mig->drop();
     }
 
     protected static function getMethod($name)
@@ -69,19 +39,13 @@ final class DatabaseTest extends TestCase
 
     public function testMigration()
     {
-        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
-
         $mig = new Asatru\Database\Migration('TestModel', $this->pdo);
         $this->addToAssertionCount(1);
 
         $mig->drop();
         $this->addToAssertionCount(1);
 
-        if ($driver === 'pgsql') {
-            $mig->add('id SERIAL PRIMARY KEY');
-        } else {
-            $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
-        }
+        $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
         $mig->add('text VARCHAR(260) NULL DEFAULT \'Test\'');
         $mig->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
         $mig->create();
@@ -100,8 +64,6 @@ final class DatabaseTest extends TestCase
      */
     public function testMigrateFresh()
     {
-        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
-
         migrate_fresh();
         $this->addToAssertionCount(1);
 
@@ -111,11 +73,7 @@ final class DatabaseTest extends TestCase
         $mig->drop();
         $this->addToAssertionCount(1);
 
-        if ($driver === 'pgsql') {
-            $mig->add('id SERIAL PRIMARY KEY');
-        } else {
-            $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
-        }
+        $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
         $mig->add('text VARCHAR(260) NULL DEFAULT \'Test\'');
         $mig->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
         $mig->create();
