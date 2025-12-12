@@ -19,6 +19,7 @@ namespace Asatru\Database {
         private $handle = null;
         private $command = null;
         private $name = null;
+        private $column_name = null;
         private $column_base = null;
         private $column_nullable = false;
         private $column_default = null;
@@ -29,6 +30,18 @@ namespace Asatru\Database {
         private $column_charset = null;
         private $column_comment = null;
         private $column_after = null;
+        private $postCreateStatements = [];
+
+        /**
+         * Map MySQL collations to PostgreSQL equivalents
+         */
+        private static $collationMap = [
+            'utf8mb4_unicode_ci' => '"und-x-icu"',
+            'utf8_unicode_ci' => '"und-x-icu"',
+            'utf8mb4_general_ci' => '"C"',
+            'utf8_general_ci' => '"C"',
+            'latin1_swedish_ci' => '"C"',
+        ];
 
         /**
          * Initialize table creation
@@ -96,6 +109,7 @@ namespace Asatru\Database {
                 throw new \Exception('Starting new column while the last has not finished yet: ' . $this->column_base);
             }
 
+            $this->column_name = $name;
             $this->column_base = $name . ' ' . $type;
 
             if ($size !== null) {
@@ -277,18 +291,31 @@ namespace Asatru\Database {
                 throw new \Exception('New column has not been started yet');
             }
 
+            $isPostgres = (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql');
             $expression = $this->column_base;
 
-            if ($this->column_charset !== null) {
+            // CHARACTER SET - MySQL only (PostgreSQL sets charset at database level)
+            if ($this->column_charset !== null && !$isPostgres) {
                 $expression .= ' CHARACTER SET ' . $this->column_charset;
             }
 
+            // COLLATE - Map MySQL collations to PostgreSQL equivalents
             if ($this->column_collation !== null) {
-                $expression .= ' COLLATE ' . $this->column_collation;
+                if ($isPostgres) {
+                    $pgCollation = self::$collationMap[$this->column_collation] ?? '"' . $this->column_collation . '"';
+                    $expression .= ' COLLATE ' . $pgCollation;
+                } else {
+                    $expression .= ' COLLATE ' . $this->column_collation;
+                }
             }
 
+            // UNSIGNED - PostgreSQL uses CHECK constraint
             if ($this->column_unsigned) {
-                $expression .= ' UNSIGNED';
+                if ($isPostgres) {
+                    $expression .= ' CHECK (' . $this->column_name . ' >= 0)';
+                } else {
+                    $expression .= ' UNSIGNED';
+                }
             }
 
             if ($this->column_nullable) {
@@ -297,25 +324,40 @@ namespace Asatru\Database {
                 $expression .= ' NOT NULL';
             }
 
+            // DEFAULT value - proper quoting for both drivers
             if ($this->column_default !== null) {
                 $expression .= ' DEFAULT ';
 
                 if (is_string($this->column_default)) {
-                    $expression .= '`' . $this->column_default . '`';
+                    $escaped = $isPostgres
+                        ? str_replace("'", "''", $this->column_default)
+                        : str_replace("'", "\\'", $this->column_default);
+                    $expression .= '\'' . $escaped . '\'';
                 } else {
                     if (gettype($this->column_default) == 'boolean') {
-                        $expression .= ($this->column_default) ? '1' : '0';
+                        if ($isPostgres) {
+                            $expression .= ($this->column_default) ? 'TRUE' : 'FALSE';
+                        } else {
+                            $expression .= ($this->column_default) ? '1' : '0';
+                        }
                     } else {
                         $expression .= strval($this->column_default);
                     }
                 }
             }
 
+            // COMMENT - PostgreSQL requires separate statement
             if ($this->column_comment !== null) {
-                $expression .= ' COMMENT \'' . $this->column_comment . '\'';
+                if ($isPostgres) {
+                    $escapedComment = str_replace("'", "''", $this->column_comment);
+                    $this->postCreateStatements[] = 'COMMENT ON COLUMN "' . $this->name . '"."' . $this->column_name . '" IS \'' . $escapedComment . '\'';
+                } else {
+                    $expression .= ' COMMENT \'' . $this->column_comment . '\'';
+                }
             }
 
-            if ($this->column_auto_increment) {
+            // AUTO_INCREMENT - MySQL only (PostgreSQL uses SERIAL type)
+            if ($this->column_auto_increment && !$isPostgres) {
                 $expression .= ' AUTO_INCREMENT';
             }
 
@@ -323,12 +365,14 @@ namespace Asatru\Database {
                 $expression .= ' PRIMARY KEY';
             }
 
-            if ($this->column_after !== null) {
+            // AFTER column - MySQL only (silently ignored for PostgreSQL)
+            if ($this->column_after !== null && !$isPostgres) {
                 $expression .= ' AFTER ' . $this->column_after;
             }
-            
+
             $this->add($expression);
 
+            $this->column_name = null;
             $this->column_base = null;
             $this->column_nullable = false;
             $this->column_default = null;
@@ -357,6 +401,16 @@ namespace Asatru\Database {
             if ($error[0] !== '00000') {
                 throw new \Exception('SQL error: ' . $error[0] . ':' . $error[1] . ' -> ' . $error[2]);
             }
+
+            // Execute post-create statements (PostgreSQL COMMENTs, etc.)
+            foreach ($this->postCreateStatements as $stmt) {
+                $this->handle->exec($stmt . ';');
+                $error = $this->handle->errorInfo();
+                if ($error[0] !== '00000') {
+                    throw new \Exception('SQL error in post-create: ' . $error[0] . ':' . $error[1] . ' -> ' . $error[2]);
+                }
+            }
+            $this->postCreateStatements = [];
         }
 
         /**
@@ -418,6 +472,9 @@ namespace Asatru\Database {
             foreach ($arr as $key => $value) {
                 if (is_array($value)) {
                     $this->items[$key] = new Collection($value);
+                } else if (is_resource($value) && get_resource_type($value) === 'stream') {
+                    // PostgreSQL BYTEA columns are returned as streams - read them immediately
+                    $this->items[$key] = stream_get_contents($value);
                 } else {
                     $this->items[$key] = $value;
                 }
@@ -460,18 +517,17 @@ namespace Asatru\Database {
          */
         public function get($ident)
         {
+            // Try exact match first
             if (isset($this->items[$ident])) {
-                $value = $this->items[$ident];
+                return $this->items[$ident];
+            }
 
-                // Handle PostgreSQL BYTEA columns returned as streams
-                if (is_resource($value) && get_resource_type($value) === 'stream') {
-                    // Read stream once and cache the result
-                    $contents = stream_get_contents($value);
-                    $this->items[$ident] = $contents;  // Cache for future calls
-                    return $contents;
+            // PostgreSQL lowercases unquoted column names, so try case-insensitive lookup
+            if (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql') {
+                $lowerIdent = strtolower($ident);
+                if (isset($this->items[$lowerIdent])) {
+                    return $this->items[$lowerIdent];
                 }
-
-                return $value;
             }
 
             return null;
@@ -1309,7 +1365,14 @@ namespace {
 
             $objPdo = new \PDO('mysql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'] . ';charset=' . $_ENV['DB_CHARSET'], $_ENV['DB_USER'], $_ENV['DB_PASSWORD'], $dbconattr);
         } else if ($_ENV['DB_DRIVER'] === 'pgsql') {
-            $objPdo = new \PDO('pgsql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'], $_ENV['DB_USER'], $_ENV['DB_PASSWORD'], $dbconattr);
+            $dsn = 'pgsql:host=' . $_ENV['DB_HOST'] . ';port=' . $_ENV['DB_PORT'] . ';dbname=' . $_ENV['DB_DATABASE'];
+
+            // Add search_path to DSN if schema is specified
+            if (isset($_ENV['DB_SCHEMA']) && strlen($_ENV['DB_SCHEMA']) > 0) {
+                $dsn .= ';options=--search_path=' . $_ENV['DB_SCHEMA'];
+            }
+
+            $objPdo = new \PDO($dsn, $_ENV['DB_USER'], $_ENV['DB_PASSWORD'], $dbconattr);
         } else {
             throw new \Exception('Database driver ' . $_ENV['DB_DRIVER'] . ' is not supported');
         }

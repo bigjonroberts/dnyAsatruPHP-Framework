@@ -13,13 +13,71 @@
 
 namespace Asatru\Console {
     /**
+     * Generate PostgreSQL trigger code for updated_at column
+     *
+     * @param string $tableName The table name
+     * @return array Array with 'up' code and 'down' code
+     */
+    function generatePostgresUpdatedAtTrigger($tableName)
+    {
+        $funcName = 'update_' . strtolower($tableName) . '_updated_at_column';
+        $triggerName = 'update_' . strtolower($tableName) . '_updated_at';
+
+        $upCode = "
+        // Create PostgreSQL trigger function for updated_at
+        \$this->connection->exec('
+            CREATE OR REPLACE FUNCTION {$funcName}()
+            RETURNS TRIGGER AS \$trigger\$
+            BEGIN
+                NEW.updated_at = CURRENT_TIMESTAMP;
+                RETURN NEW;
+            END;
+            \$trigger\$ LANGUAGE plpgsql
+        ');
+
+        // Create trigger
+        \$this->connection->exec('
+            DROP TRIGGER IF EXISTS {$triggerName} ON \"{$tableName}\";
+            CREATE TRIGGER {$triggerName}
+            BEFORE UPDATE ON \"{$tableName}\"
+            FOR EACH ROW
+            EXECUTE FUNCTION {$funcName}()
+        ');";
+
+        $downCode = "
+            // Drop PostgreSQL trigger and function
+            \$this->connection->exec('DROP TRIGGER IF EXISTS {$triggerName} ON \"{$tableName}\"');
+            \$this->connection->exec('DROP FUNCTION IF EXISTS {$funcName}()');";
+
+        return ['up' => $upCode, 'down' => $downCode];
+    }
+
+    /**
      * Create a model with the associated migration
-     * 
+     *
      * @param string $name The name of the model and migration
      * @return boolean
      */
     function createModel($name)
     {
+        $driver = isset($_ENV['DB_DRIVER']) ? $_ENV['DB_DRIVER'] : 'mysql';
+
+        // Generate driver-specific SQL
+        if ($driver === 'pgsql') {
+            $idColumn = 'id SERIAL PRIMARY KEY';
+            $updatedAtColumn = 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+            $createdAtColumn = 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+            $triggerCode = generatePostgresUpdatedAtTrigger(ucfirst($name));
+            $upTrigger = $triggerCode['up'];
+            $downTrigger = $triggerCode['down'];
+        } else {
+            $idColumn = 'id INT NOT NULL AUTO_INCREMENT PRIMARY KEY';
+            $updatedAtColumn = 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP';
+            $createdAtColumn = 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+            $upTrigger = '';
+            $downTrigger = '';
+        }
+
         $content1 = "<?php
 
     /*
@@ -35,7 +93,7 @@ namespace Asatru\Console {
 
         /**
          * Store the PDO connection handle
-         * 
+         *
          * @param \\PDO \$pdo The PDO connection handle
          * @return void
          */
@@ -46,26 +104,28 @@ namespace Asatru\Console {
 
         /**
          * Called when the table shall be created or modified
-         * 
+         *
          * @return void
          */
         public function up()
         {
             \$this->database = new Asatru\Database\Migration('" . ucfirst($name) . "', \$this->connection);
             \$this->database->drop();
-            \$this->database->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
-            \$this->database->add('updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
-            \$this->database->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
+            \$this->database->add('" . $idColumn . "');
+            \$this->database->add('" . $updatedAtColumn . "');
+            \$this->database->add('" . $createdAtColumn . "');
             \$this->database->create();
+" . $upTrigger . "
         }
 
         /**
          * Called when the table shall be dropped
-         * 
+         *
          * @return void
          */
         public function down()
         {
+" . $downTrigger . "
             if (\$this->database)
                 \$this->database->drop();
         }
@@ -83,7 +143,7 @@ namespace Asatru\Console {
 
     /**
      * This class extends the base model class and represents your associated table
-     */ 
+     */
     class " . $name . " extends \Asatru\Database\Model {
         //
     }";
@@ -352,6 +412,36 @@ namespace Asatru\Console {
      */
     function createAuth()
     {
+        $driver = isset($_ENV['DB_DRIVER']) ? $_ENV['DB_DRIVER'] : 'mysql';
+
+        // Generate driver-specific SQL for Session table
+        if ($driver === 'pgsql') {
+            $sessionIdCol = 'id SERIAL PRIMARY KEY';
+            $sessionUpdatedAt = 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+            $sessionTrigger = generatePostgresUpdatedAtTrigger('Session');
+            $sessionUpTrigger = $sessionTrigger['up'];
+            $sessionDownTrigger = $sessionTrigger['down'];
+        } else {
+            $sessionIdCol = 'id INT NOT NULL AUTO_INCREMENT PRIMARY KEY';
+            $sessionUpdatedAt = 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP';
+            $sessionUpTrigger = '';
+            $sessionDownTrigger = '';
+        }
+
+        // Generate driver-specific SQL for Auth table
+        if ($driver === 'pgsql') {
+            $authIdCol = 'id SERIAL PRIMARY KEY';
+            $authUpdatedAt = 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP';
+            $authTrigger = generatePostgresUpdatedAtTrigger('Auth');
+            $authUpTrigger = $authTrigger['up'];
+            $authDownTrigger = $authTrigger['down'];
+        } else {
+            $authIdCol = 'id INT NOT NULL AUTO_INCREMENT PRIMARY KEY';
+            $authUpdatedAt = 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP';
+            $authUpTrigger = '';
+            $authDownTrigger = '';
+        }
+
         $contentmig1 = "<?php
 
     /*
@@ -367,7 +457,7 @@ namespace Asatru\Console {
 
         /**
          * Store the PDO connection handle
-         * 
+         *
          * @param \PDO \$pdo The PDO connection handle
          * @return void
          */
@@ -378,29 +468,31 @@ namespace Asatru\Console {
 
         /**
          * Called when the table shall be created or modified
-         * 
+         *
          * @return void
          */
         public function up()
         {
             \$this->database = new Asatru\Database\Migration('Session', \$this->connection);
             \$this->database->drop();
-            \$this->database->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
+            \$this->database->add('" . $sessionIdCol . "');
             \$this->database->add('userId INT NOT NULL');
             \$this->database->add('session VARCHAR(512) NOT NULL');
             \$this->database->add('status BOOLEAN NOT NULL DEFAULT 0');
-            \$this->database->add('updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+            \$this->database->add('" . $sessionUpdatedAt . "');
             \$this->database->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
             \$this->database->create();
+" . $sessionUpTrigger . "
         }
 
         /**
          * Called when the table shall be dropped
-         * 
+         *
          * @return void
          */
         public function down()
         {
+" . $sessionDownTrigger . "
             if (\$this->database)
                 \$this->database->drop();
         }
@@ -421,7 +513,7 @@ namespace Asatru\Console {
 
         /**
          * Set PDO connection handle
-         * 
+         *
          * @param \PDO \$pdo The PDO connection handle
          * @return void
          */
@@ -432,30 +524,32 @@ namespace Asatru\Console {
 
         /**
          * Create the authentication database table
-         * 
+         *
          * @return void
          */
         public function up()
         {
             \$this->database = new Asatru\Database\Migration('Auth', \$this->connection);
             \$this->database->drop();
-            \$this->database->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
+            \$this->database->add('" . $authIdCol . "');
             \$this->database->add('email VARCHAR(512) NOT NULL');
             \$this->database->add('username VARCHAR(512) NOT NULL');
             \$this->database->add('password VARCHAR(512) NOT NULL');
             \$this->database->add('account_confirm VARCHAR(512) NOT NULL');
-            \$this->database->add('updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP');
+            \$this->database->add('" . $authUpdatedAt . "');
             \$this->database->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
             \$this->database->create();
+" . $authUpTrigger . "
         }
 
         /**
          * Drop the authentication database table
-         * 
+         *
          * @return void
          */
         public function down()
         {
+" . $authDownTrigger . "
             if (\$this->database)
                 \$this->database->drop();
         }
@@ -754,6 +848,17 @@ namespace Asatru\Console {
      */
     function createCache()
     {
+        $driver = isset($_ENV['DB_DRIVER']) ? $_ENV['DB_DRIVER'] : 'mysql';
+
+        // Generate driver-specific SQL
+        if ($driver === 'pgsql') {
+            $cacheIdCol = 'id SERIAL PRIMARY KEY';
+            $cacheValueCol = 'value BYTEA NULL';  // PostgreSQL uses BYTEA instead of BLOB
+        } else {
+            $cacheIdCol = 'id INT NOT NULL AUTO_INCREMENT PRIMARY KEY';
+            $cacheValueCol = 'value BLOB NULL';
+        }
+
         $content1 = "<?php
 
     /*
@@ -766,7 +871,7 @@ namespace Asatru\Console {
 
         /**
          * Construct class and store PDO connection handle
-         * 
+         *
          * @param \PDO \$pdo
          * @return void
          */
@@ -777,16 +882,16 @@ namespace Asatru\Console {
 
         /**
          * Called when the table shall be created or modified
-         * 
+         *
          * @return void
          */
         public function up()
         {
             \$this->database = new Asatru\Database\Migration('Cache', \$this->connection);
             \$this->database->drop();
-            \$this->database->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
+            \$this->database->add('" . $cacheIdCol . "');
             \$this->database->add('ident VARCHAR(260) NOT NULL');
-            \$this->database->add('value BLOB NULL');
+            \$this->database->add('" . $cacheValueCol . "');
             \$this->database->add('updated_at TIMESTAMP');
             \$this->database->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
             \$this->database->create();
@@ -794,7 +899,7 @@ namespace Asatru\Console {
 
         /**
          * Called when the table shall be dropped
-         * 
+         *
          * @return void
          */
         public function down()
