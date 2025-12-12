@@ -253,4 +253,23 @@ final class DatabaseTest extends TestCase
 
         $this->assertEquals('two', $coll->get('test3')->get('one'));
     }
+
+    public function testCollectionCaseInsensitiveGet()
+    {
+        $coll = new Asatru\Database\Collection(['columnname' => 'value']);
+
+        // Should find 'columnname' when asking for mixed case variants
+        $this->assertEquals('value', $coll->get('ColumnName'));
+        $this->assertEquals('value', $coll->get('COLUMNNAME'));
+        $this->assertEquals('value', $coll->get('columnname'));
+    }
+
+    public function testCollectionCaseInsensitiveSet()
+    {
+        $coll = new Asatru\Database\Collection(['columnname' => 'old']);
+
+        // Should update 'columnname' when setting 'ColumnName'
+        $coll->set('ColumnName', 'new');
+        $this->assertEquals('new', $coll->get('columnname'));
+    }
 }
