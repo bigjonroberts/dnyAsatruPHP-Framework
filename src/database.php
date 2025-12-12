@@ -13,6 +13,16 @@
 
 namespace Asatru\Database {
     /**
+     * Check if the current database driver is PostgreSQL
+     *
+     * @return bool
+     */
+    function isPostgres()
+    {
+        return (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql');
+    }
+
+    /**
      * This component handles the table creation
      */
     class Migration {
@@ -281,7 +291,7 @@ namespace Asatru\Database {
 
         /**
          * Commit current column creation
-         * 
+         *
          * @return void
          * @throws \Exception
          */
@@ -291,7 +301,7 @@ namespace Asatru\Database {
                 throw new \Exception('New column has not been started yet');
             }
 
-            $isPostgres = (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql');
+            $isPostgres = isPostgres();
             $expression = $this->column_base;
 
             // CHARACTER SET - MySQL only (PostgreSQL sets charset at database level)
@@ -490,12 +500,26 @@ namespace Asatru\Database {
          */
         public function set($key, $value)
         {
-            if (isset($this->items[$key])) {
-                $this->items[$key] = $value;
+            $itemKey = $key;
+            $origKey = $key;
+
+            // PostgreSQL lowercases unquoted column names, so try case-insensitive lookup
+            if (isPostgres()) {
+                $lowerKey = strtolower($key);
+                if (!isset($this->items[$key]) && isset($this->items[$lowerKey])) {
+                    $itemKey = $lowerKey;
+                }
+                if (!isset($this->orig[$key]) && isset($this->orig[$lowerKey])) {
+                    $origKey = $lowerKey;
+                }
             }
 
-            if (isset($this->orig[$key])) {
-                $this->orig[$key] = $value;
+            if (isset($this->items[$itemKey])) {
+                $this->items[$itemKey] = $value;
+            }
+
+            if (isset($this->orig[$origKey])) {
+                $this->orig[$origKey] = $value;
             }
         }
 
@@ -523,7 +547,7 @@ namespace Asatru\Database {
             }
 
             // PostgreSQL lowercases unquoted column names, so try case-insensitive lookup
-            if (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql') {
+            if (isPostgres()) {
                 $lowerIdent = strtolower($ident);
                 if (isset($this->items[$lowerIdent])) {
                     return $this->items[$lowerIdent];
@@ -682,7 +706,7 @@ namespace Asatru\Database {
         private static function getColumnTypes($tableName)
         {
             // Only needed for PostgreSQL
-            if (!isset($_ENV['DB_DRIVER']) || $_ENV['DB_DRIVER'] !== 'pgsql') {
+            if (!isPostgres()) {
                 return array();
             }
 
@@ -776,7 +800,7 @@ namespace Asatru\Database {
             $qry = str_replace('@THIS', get_called_class(), $qry);
 
             // PostgreSQL doesn't support backticks - remove them for pgsql
-            if (isset($_ENV['DB_DRIVER']) && $_ENV['DB_DRIVER'] === 'pgsql') {
+            if (isPostgres()) {
                 $qry = str_replace('`', '', $qry);
             }
 
