@@ -21,5 +21,34 @@
 		"phpmailer/phpmailer": "^6.1",
         "nesbot/carbon": "^3.0",
 		"phpunit/phpunit": "^11"
+    },
+    "scripts": {
+        "test:setup": "bash tests/setup-test-app.sh",
+        "test:mysql": [
+            "@test:setup",
+            "cp .env.testing.mysql .env.testing",
+            "phpunit tests/"
+        ],
+        "test:pgsql": [
+            "@test:setup",
+            "cp .env.testing.pgsql .env.testing",
+            "phpunit tests/"
+        ],
+        "test": [
+            "@test:mysql",
+            "@test:pgsql"
+        ],
+        "test:coverage": [
+            "@test:setup",
+            "cp .env.testing.pgsql .env.testing",
+            "phpunit --coverage-html coverage tests/"
+        ]
+    },
+    "scripts-descriptions": {
+        "test:setup": "Setup minimal app structure for testing",
+        "test:mysql": "Run tests with MySQL database",
+        "test:pgsql": "Run tests with PostgreSQL database",
+        "test": "Run tests against both MySQL and PostgreSQL",
+        "test:coverage": "Generate code coverage report (PostgreSQL)"
     }
 }

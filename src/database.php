@@ -118,7 +118,21 @@ namespace Asatru\Database {
          */
         public function append($column)
         {
-            $this->handle->exec('ALTER TABLE ' . $this->name . ' ADD ' . $column . ';');
+            $tableName = $this->name;
+
+            // For PostgreSQL, remove backticks and lowercase table name for case-insensitive matching
+            if (isPostgres()) {
+                $tableName = strtolower(str_replace('`', '', $tableName));
+            }
+
+            $sql = 'ALTER TABLE ' . $tableName . ' ADD ' . $column . ';';
+
+            // Convert remaining backticks to double quotes for PostgreSQL
+            if (isPostgres()) {
+                $sql = str_replace('`', '"', $sql);
+            }
+
+            $this->handle->exec($sql);
         }
 
         /**
@@ -377,22 +391,29 @@ namespace Asatru\Database {
             if ($this->column_comment !== null) {
                 if ($isPostgres) {
                     $escapedComment = str_replace("'", "''", $this->column_comment);
-                    $this->postCreateStatements[] = 'COMMENT ON COLUMN "' . $this->name . '"."' . $this->column_name . '" IS \'' . $escapedComment . '\'';
+                    // Lowercase table and column names for PostgreSQL case-insensitive matching
+                    $tableName = strtolower($this->name);
+                    $columnName = strtolower($this->column_name);
+                    $this->postCreateStatements[] = 'COMMENT ON COLUMN "' . $tableName . '"."' . $columnName . '" IS \'' . $escapedComment . '\'';
                 } else {
                     $expression .= ' COMMENT \'' . $this->column_comment . '\'';
                 }
             }
 
-            // AUTO_INCREMENT - MySQL only (PostgreSQL uses SERIAL type)
-            if ($this->column_auto_increment && !$isPostgres) {
-                $expression .= ' AUTO_INCREMENT';
+
+            if ($this->column_auto_increment) {
+                if ($isPostgres) {
+                    $expression .= ' SERIAL';
+                } else {
+                    $expression .= ' AUTO_INCREMENT';
+                }
             }
 
             if ($this->column_primary_key) {
                 $expression .= ' PRIMARY KEY';
             }
 
-            // AFTER column - MySQL only (silently ignored for PostgreSQL)
+            // (silently ignored for PostgreSQL, not supported)
             if ($this->column_after !== null && !$isPostgres) {
                 $expression .= ' AFTER ' . $this->column_after;
             }
@@ -437,6 +458,10 @@ namespace Asatru\Database {
 
             // Execute post-create statements (PostgreSQL COMMENTs, etc.)
             foreach ($this->postCreateStatements as $stmt) {
+                // Apply backtick conversion for PostgreSQL
+                if (isPostgres()) {
+                    $stmt = str_replace('`', '"', $stmt);
+                }
                 $this->handle->exec($stmt . ';');
                 $error = $this->handle->errorInfo();
                 if ($error[0] !== '00000') {
@@ -448,18 +473,43 @@ namespace Asatru\Database {
 
         /**
          * Drop the table
-         * 
+         *
          * @return void
          * @throws \Exception
          */
         public function drop()
         {
-            $this->handle->exec('DROP TABLE IF EXISTS ' . $this->name . ';');
+            $tableName = $this->name;
+
+            // For PostgreSQL, remove backticks and lowercase table name for case-insensitive matching
+            if (isPostgres()) {
+                $tableName = strtolower(str_replace('`', '', $tableName));
+            }
+
+            $sql = 'DROP TABLE IF EXISTS ' . $tableName . ';';
+
+            $this->handle->exec($sql);
 
             $error = $this->handle->errorInfo();
             if ($error[0] !== '00000') {
                 throw new \Exception('SQL error: ' . $error[0] . ':' . $error[1] . ' -> ' . $error[2]);
             }
+        }
+
+        /**
+         * Convenience method to add an auto-increment primary key column
+         * Works for both MySQL (INT AUTO_INCREMENT) and PostgreSQL (SERIAL)
+         *
+         * @param string $name The name of the primary key column (default: 'id')
+         * @return void
+         * @throws \Exception
+         */
+        public function addAutoIncPrimaryKey($name = 'id')
+        {
+            $this->column($name, 'INT')
+                ->auto_increment()
+                ->primary_key()
+                ->commit();
         }
 
         /**
@@ -526,15 +576,13 @@ namespace Asatru\Database {
             $itemKey = $key;
             $origKey = $key;
 
-            // PostgreSQL lowercases unquoted column names, so try case-insensitive lookup
-            if (isPostgres()) {
-                $lowerKey = strtolower($key);
-                if (!isset($this->items[$key]) && isset($this->items[$lowerKey])) {
-                    $itemKey = $lowerKey;
-                }
-                if (!isset($this->orig[$key]) && isset($this->orig[$lowerKey])) {
-                    $origKey = $lowerKey;
-                }
+            // Try case-insensitive lookup for better developer experience with postgres
+            $lowerKey = strtolower($key);
+            if (!isset($this->items[$key]) && isset($this->items[$lowerKey])) {
+                $itemKey = $lowerKey;
+            }
+            if (!isset($this->orig[$key]) && isset($this->orig[$lowerKey])) {
+                $origKey = $lowerKey;
             }
 
             if (isset($this->items[$itemKey])) {
@@ -569,12 +617,10 @@ namespace Asatru\Database {
                 return $this->items[$ident];
             }
 
-            // PostgreSQL lowercases unquoted column names, so try case-insensitive lookup
-            if (isPostgres()) {
-                $lowerIdent = strtolower($ident);
-                if (isset($this->items[$lowerIdent])) {
-                    return $this->items[$lowerIdent];
-                }
+            // Try case-insensitive lookup for better developer experience with postgres
+            $lowerIdent = strtolower($ident);
+            if (isset($this->items[$lowerIdent])) {
+                return $this->items[$lowerIdent];
             }
 
             return null;

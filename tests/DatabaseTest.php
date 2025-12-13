@@ -286,6 +286,40 @@ final class DatabaseTest extends TestCase
     /**
      * @depends testInsertEntries
      */
+    public function testDatabaseRoundTripCaseInsensitive()
+    {
+        // Insert a test record with known values
+        $testText = 'case_insensitive_test';
+        $result = TestModel::insert('text', $testText)->go();
+        $this->assertTrue($result !== false);
+
+        // Query the data back from the actual database
+        $result = TestModel::where('text', '=', $testText)->first();
+        $this->assertNotNull($result);
+
+        // Test case-insensitive access on column names
+        // All these should return the same value regardless of case
+        $this->assertEquals($testText, $result->get('text'));
+        $this->assertEquals($testText, $result->get('Text'));
+        $this->assertEquals($testText, $result->get('TEXT'));
+
+        // Test accessing other columns with different cases
+        $this->assertNotNull($result->get('id'));
+        $this->assertNotNull($result->get('ID'));
+        $this->assertNotNull($result->get('Id'));
+
+        // Test accessing created_at with different cases
+        $this->assertNotNull($result->get('created_at'));
+        $this->assertNotNull($result->get('Created_At'));
+        $this->assertNotNull($result->get('CREATED_AT'));
+
+        // Clean up - delete the test record
+        TestModel::where('text', '=', $testText)->delete();
+    }
+
+    /**
+     * @depends testInsertEntries
+     */
     public function testBinaryDataStorage()
     {
         $binaryData = "\x00\x01\x02\x03\xFF\xFE\xFD";
@@ -351,5 +385,152 @@ final class DatabaseTest extends TestCase
 
         $decoded = json_decode($result->get('text'), true);
         $this->assertEquals($data, $decoded);
+    }
+
+    /**
+     * Test that columns WITHOUT auto_increment flag don't get AUTO_INCREMENT appended
+     * This tests the fix for the AUTO_INCREMENT bug
+     */
+    public function testColumnWithoutAutoIncrement()
+    {
+        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
+
+        $mig = new Asatru\Database\Migration('TestNonAutoInc', $this->pdo);
+
+        // Create a table with columns that do NOT have auto_increment
+        if ($driver === 'pgsql') {
+            $mig->add('id SERIAL PRIMARY KEY');
+        } else {
+            $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
+        }
+
+        // This VARCHAR column should NOT get AUTO_INCREMENT appended
+        $mig->column('name', 'VARCHAR', 100)->nullable(false)->default('test')->commit();
+        $mig->column('status', 'VARCHAR', 50)->nullable(true)->commit();
+
+        // If AUTO_INCREMENT was incorrectly added to VARCHAR columns, this will throw an exception
+        $mig->create();
+        $this->addToAssertionCount(1);
+
+        // Verify we can insert data
+        $this->pdo->exec("INSERT INTO TestNonAutoInc (name, status) VALUES ('Alice', 'active')");
+        $result = $this->pdo->query("SELECT * FROM TestNonAutoInc WHERE name = 'Alice'")->fetch();
+        $this->assertEquals('Alice', $result['name']);
+
+        // Cleanup
+        $mig->drop();
+    }
+
+    /**
+     * Test column comments (which use postCreateStatements)
+     * This tests the fix for postCreateStatements backtick conversion
+     */
+    public function testColumnComments()
+    {
+        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
+
+        $mig = new Asatru\Database\Migration('TestComments', $this->pdo);
+
+        if ($driver === 'pgsql') {
+            $mig->add('id SERIAL PRIMARY KEY');
+        } else {
+            $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
+        }
+
+        // Add a column with a comment
+        $mig->column('description', 'VARCHAR', 200)
+            ->nullable(true)
+            ->comment('User description field')
+            ->commit();
+
+        // Create table (PostgreSQL will use postCreateStatements for COMMENT)
+        $mig->create();
+        $this->addToAssertionCount(1);
+
+        // Verify we can use the table
+        $this->pdo->exec("INSERT INTO TestComments (description) VALUES ('Test comment')");
+        $result = $this->pdo->query("SELECT * FROM TestComments")->fetch();
+        $this->assertEquals('Test comment', $result['description']);
+
+        // Cleanup
+        $mig->drop();
+    }
+
+    /**
+     * Test the append() method
+     * This tests the fix for append() backtick conversion
+     */
+    public function testAppendColumn()
+    {
+        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
+
+        $mig = new Asatru\Database\Migration('TestAppend', $this->pdo);
+
+        // Create initial table
+        if ($driver === 'pgsql') {
+            $mig->add('id SERIAL PRIMARY KEY');
+        } else {
+            $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
+        }
+        $mig->add('name VARCHAR(100) NOT NULL');
+        $mig->create();
+
+        // Use append() to add a column after table creation
+        $mig->append('email VARCHAR(255) NULL');
+        $this->addToAssertionCount(1);
+
+        // Verify the new column exists
+        $this->pdo->exec("INSERT INTO TestAppend (name, email) VALUES ('Bob', 'bob@example.com')");
+        $result = $this->pdo->query("SELECT * FROM TestAppend WHERE name = 'Bob'")->fetch();
+        $this->assertEquals('bob@example.com', $result['email']);
+
+        // Cleanup
+        $mig->drop();
+    }
+
+    /**
+     * Test column builder with various modifiers
+     * This tests that all column modifiers work correctly for both databases
+     */
+    public function testColumnBuilder()
+    {
+        $driver = $_ENV['DB_DRIVER'] ?? 'mysql';
+
+        $mig = new Asatru\Database\Migration('TestBuilder', $this->pdo);
+
+        // Test various column configurations
+        if ($driver === 'pgsql') {
+            $mig->column('id', 'SERIAL')->primary_key()->commit();
+        } else {
+            $mig->column('id', 'INT')->auto_increment()->primary_key()->commit();
+        }
+
+        $mig->column('name', 'VARCHAR', 100)
+            ->nullable(false)
+            ->default('Unknown')
+            ->commit();
+
+        $mig->column('age', 'INT')
+            ->nullable(true)
+            ->unsigned(true)
+            ->commit();
+
+        $mig->column('bio', 'TEXT')
+            ->nullable(true)
+            ->collation($driver === 'pgsql' ? 'C' : 'utf8mb4_unicode_ci')
+            ->commit();
+
+        // Create table
+        $mig->create();
+        $this->addToAssertionCount(1);
+
+        // Test inserting data
+        $this->pdo->exec("INSERT INTO TestBuilder (name, age) VALUES ('Charlie', 25)");
+        $result = $this->pdo->query("SELECT * FROM TestBuilder")->fetch();
+        $this->assertEquals('Charlie', $result['name']);
+        $this->assertEquals(25, $result['age']);
+
+        // Cleanup
+        $mig->drop();
     }
 }
