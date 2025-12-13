@@ -89,6 +89,11 @@ final class DatabaseTest extends TestCase
             $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
         }
         $mig->add('text VARCHAR(260) NULL DEFAULT \'Test\'');
+        if ($driver === 'pgsql') {
+            $mig->add('data BYTEA NULL');
+        } else {
+            $mig->add('data BLOB NULL');
+        }
         $mig->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
         $mig->create();
         $this->addToAssertionCount(4);
@@ -123,6 +128,11 @@ final class DatabaseTest extends TestCase
             $mig->add('id INT NOT NULL AUTO_INCREMENT PRIMARY KEY');
         }
         $mig->add('text VARCHAR(260) NULL DEFAULT \'Test\'');
+        if ($driver === 'pgsql') {
+            $mig->add('data BYTEA NULL');
+        } else {
+            $mig->add('data BLOB NULL');
+        }
         $mig->add('created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP');
         $mig->create();
         $this->addToAssertionCount(4);
@@ -271,5 +281,75 @@ final class DatabaseTest extends TestCase
         // Should update 'columnname' when setting 'ColumnName'
         $coll->set('ColumnName', 'new');
         $this->assertEquals('new', $coll->get('columnname'));
+    }
+
+    /**
+     * @depends testInsertEntries
+     */
+    public function testBinaryDataStorage()
+    {
+        $binaryData = "\x00\x01\x02\x03\xFF\xFE\xFD";
+
+        TestModel::insert('data', $binaryData)->go();
+        $result = TestModel::orderBy('id', 'desc')->first();
+
+        $this->assertEquals($binaryData, $result->get('data'));
+    }
+
+    /**
+     * @depends testInsertEntries
+     */
+    public function testSerializedObjectStorage()
+    {
+        $object = (object)['key' => 'value', 'num' => 123];
+        $serialized = serialize($object);
+
+        TestModel::insert('data', $serialized)->go();
+        $result = TestModel::orderBy('id', 'desc')->first();
+
+        $unserialized = unserialize($result->get('data'));
+        $this->assertEquals($object->key, $unserialized->key);
+        $this->assertEquals($object->num, $unserialized->num);
+    }
+
+    /**
+     * @depends testInsertEntries
+     */
+    public function testUnicodeDataStorage()
+    {
+        $unicode = '日本語 Русский العربية';
+
+        TestModel::insert('text', $unicode)->go();
+        $result = TestModel::orderBy('id', 'desc')->first();
+
+        $this->assertEquals($unicode, $result->get('text'));
+    }
+
+    /**
+     * @depends testInsertEntries
+     */
+    public function testSpecialCharactersStorage()
+    {
+        $special = "Line1\nLine2\rLine3\tTabbed";
+
+        TestModel::insert('text', $special)->go();
+        $result = TestModel::orderBy('id', 'desc')->first();
+
+        $this->assertEquals($special, $result->get('text'));
+    }
+
+    /**
+     * @depends testInsertEntries
+     */
+    public function testJsonDataStorage()
+    {
+        $data = ['name' => 'Test', 'count' => 42, 'active' => true, 'tags' => ['one', 'two']];
+        $json = json_encode($data);
+
+        TestModel::insert('text', $json)->go();
+        $result = TestModel::orderBy('id', 'desc')->first();
+
+        $decoded = json_decode($result->get('text'), true);
+        $this->assertEquals($data, $decoded);
     }
 }

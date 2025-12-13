@@ -23,6 +23,23 @@ namespace Asatru\Database {
     }
 
     /**
+     * Quote an identifier (table name, column name) for the current database driver
+     *
+     * MySQL uses backticks: `identifier`
+     * PostgreSQL uses double quotes: "identifier"
+     *
+     * @param string $identifier The identifier to quote
+     * @return string The quoted identifier
+     */
+    function quoteIdentifier($identifier)
+    {
+        if (isPostgres()) {
+            return '"' . $identifier . '"';
+        }
+        return '`' . $identifier . '`';
+    }
+
+    /**
      * This component handles the table creation
      */
     class Migration {
@@ -405,7 +422,13 @@ namespace Asatru\Database {
         {
             $this->command .= ');';
 
-            $this->handle->exec($this->command);
+            // PostgreSQL doesn't support backticks - replace them with double quotes for identifiers
+            $command = $this->command;
+            if (isPostgres()) {
+                $command = str_replace('`', '"', $command);
+            }
+
+            $this->handle->exec($command);
 
             $error = $this->handle->errorInfo();
             if ($error[0] !== '00000') {
@@ -797,11 +820,20 @@ namespace Asatru\Database {
                 throw new \Exception('PDO connection must be provided first');
             }
 
-            $qry = str_replace('@THIS', get_called_class(), $qry);
-
-            // PostgreSQL doesn't support backticks - remove them for pgsql
+            // For PostgreSQL, use lowercase table name since PG stores unquoted identifiers in lowercase
+            $tableName = get_called_class();
             if (isPostgres()) {
-                $qry = str_replace('`', '', $qry);
+                $tableName = strtolower($tableName);
+            }
+            $qry = str_replace('@THIS', $tableName, $qry);
+
+            // PostgreSQL doesn't support backticks - replace them with double quotes for identifiers
+            // but remove backticks around table names (they should remain unquoted for case-insensitivity)
+            if (isPostgres()) {
+                // Replace backticks with double quotes
+                $qry = str_replace('`', '"', $qry);
+                // Remove quotes around the table name to let PostgreSQL use case-insensitive matching
+                $qry = str_replace('"' . $tableName . '"', $tableName, $qry);
             }
 
             $prp = self::$handle->prepare($qry);

@@ -12,7 +12,8 @@
 */
 
 //Set application root directory path
-define('ASATRU_APP_ROOT', __DIR__ . '/../../../..');
+// For standalone framework tests, use the framework's own app directory
+define('ASATRU_APP_ROOT', __DIR__ . '/..');
 
 //If composer is installed we utilize its autoloader
 if (file_exists(__DIR__ . '/../vendor/autoload.php')) {
@@ -35,8 +36,8 @@ require_once __DIR__ . '/../src/logger.php';
 require_once __DIR__ . '/../src/dotenv.php';
 
 //Parse .env file if it exists
-if (file_exists(__DIR__ . '/../../../../.env.testing')) {
-    env_parse(__DIR__ . '/../../../../.env.testing');
+if (file_exists(__DIR__ . '/../.env.testing')) {
+    env_parse(__DIR__ . '/../.env.testing');
 }
 
 //Require autoload component
@@ -106,3 +107,6 @@ require_once __DIR__ . '/../src/commands.php';
 
 //Require console
 require_once __DIR__ . '/../src/console.php';
+
+//Load test model
+require_once __DIR__ . '/TestModel.php';
