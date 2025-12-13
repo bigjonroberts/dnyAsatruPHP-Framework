@@ -14,4 +14,6 @@ DB_SCHEMA=public
 SESSION_ENABLE=false
 
 # App settings
+APP_NAME=Asatru PHP
 APP_DEBUG=true
+APP_LANG=en
