@@ -113,5 +113,27 @@ require_once __DIR__ . '/../src/commands.php';
 //Require console
 require_once __DIR__ . '/../src/console.php';
 
+// Initialize global objects for testing
+global $objLocale, $objEventManager, $objLogger, $objLanguage;
+
+if (!isset($objLocale)) {
+    $objLocale = new \Asatru\Lang\Locale();
+}
+
+if (!isset($objEventManager)) {
+    $objEventManager = new \Asatru\Events\EventManager(ASATRU_APP_ROOT . '/app/config/events.php');
+}
+
+if (!isset($objLogger)) {
+    $objLogger = new \Asatru\Logger\Logger();
+}
+
+// $objLanguage should already be initialized by locale.php (line 94)
+// But ensure it exists for tests
+if (!isset($objLanguage)) {
+    $objLanguage = new \Asatru\Lang\Language();
+    $objLanguage->load('en');
+}
+
 //Load test model
 require_once __DIR__ . '/TestModel.php';
