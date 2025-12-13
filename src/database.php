@@ -422,7 +422,13 @@ namespace Asatru\Database {
         {
             $this->command .= ');';
 
-            $this->handle->exec($this->command);
+            // PostgreSQL doesn't support backticks - replace them with double quotes for identifiers
+            $command = $this->command;
+            if (isPostgres()) {
+                $command = str_replace('`', '"', $command);
+            }
+
+            $this->handle->exec($command);
 
             $error = $this->handle->errorInfo();
             if ($error[0] !== '00000') {
