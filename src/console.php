@@ -315,7 +315,7 @@ namespace Asatru\Console {
     }
         ";
 
-        if (!file_put_contents(ASATRU_APP_ROOT . '/app/validators/' . strtolower($name) . '.php', $content)) {
+        if (!file_put_contents(ASATRU_APP_ROOT . '/app/validators/' . $name . '.php', $content)) {
             return false;
         }
 
