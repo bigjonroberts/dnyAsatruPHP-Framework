@@ -28,9 +28,9 @@ final class EventsTest extends TestCase
 
     public function testLoadAndRaiseEvent()
     {
-        $evtmgr = new Asatru\Events\EventManager(__DIR__ . '/../../../../app/config/events.php');
+        $evtmgr = new Asatru\Events\EventManager(app_path('/config/events.php'));
         $method = self::getMethod('loadEventConfig');
-        $result = $method->invokeArgs($evtmgr, array(__DIR__ . '/../../../../app/config/events.php'));
+        $result = $method->invokeArgs($evtmgr, array(app_path('/config/events.php')));
         $this->addToAssertionCount(1);
         $evtmgr->raiseEvent('my_event');
     }

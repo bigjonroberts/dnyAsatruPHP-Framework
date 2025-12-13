@@ -59,7 +59,7 @@ final class DotenvTest extends TestCase
     public function testEnvClass()
     {
         $inst = Asatru\Dotenv\DotEnvParser::instance();
-        $inst->parse(__DIR__ . '/../../../../.env');
+        $inst->parse(__DIR__ . '/../.env');
         $this->assertTrue($inst->has_error() === false);
         $this->assertTrue($inst->errorStr() === '');
         $this->assertTrue($inst->query('APP_NAME') === 'Asatru PHP');
@@ -70,7 +70,7 @@ final class DotenvTest extends TestCase
 
     public function testEnv()
     {
-        $result = env_parse(__DIR__ . '/../../../../.env');
+        $result = env_parse(__DIR__ . '/../.env');
         $this->assertTrue(env_has_error() === false);
         $this->assertTrue(env_get('APP_NAME') === 'Asatru PHP');
     }

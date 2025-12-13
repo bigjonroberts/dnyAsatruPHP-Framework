@@ -29,7 +29,7 @@ final class ControllerTest extends TestCase
     public function testParseUrl()
     {
         $_SERVER['REQUEST_METHOD'] = 'GET';
-        $controller = new Asatru\Controller\ControllerHandler(__DIR__ . '/../../../../app/config/routes.php');
+        $controller = new Asatru\Controller\ControllerHandler(app_path('/config/routes.php'));
         $result = $controller->parse('/index');
         $this->assertInstanceOf('Asatru\\View\\ViewHandler', $result);
     }
@@ -77,7 +77,7 @@ final class ControllerTest extends TestCase
         $_POST['test_validator'] = 'test_validator';
         $_POST['csrf_token'] = $_SESSION['csrf_token'];
 
-        Asatru\Controller\CustomPostValidators::load(__DIR__ . '/../../../../app/validators');
+        Asatru\Controller\CustomPostValidators::load(app_path('/validators'));
         $this->addToAssertionCount(1);
 
         $validator = Asatru\Controller\CustomPostValidators::findValidator('testvalidator');
@@ -102,7 +102,7 @@ final class ControllerTest extends TestCase
         $_GET['test1'] = 'hello';
         $_GET['test2'] = 'world';
         $method = self::getMethod('urlMatches');
-        $obj = new Asatru\Controller\ControllerHandler(__DIR__ . '/../../../../app/config/routes.php');
+        $obj = new Asatru\Controller\ControllerHandler(app_path('/config/routes.php'));
         $ctrl = new Asatru\Controller\ControllerArg($url);
         $result = $method->invokeArgs($obj, array($url, 'GET', '/test/{first}/another/{second}', $ctrl));
         $this->assertTrue($result);

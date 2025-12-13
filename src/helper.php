@@ -137,6 +137,11 @@ namespace {
      */
     function base_path($path = '')
     {
+        // Use ASATRU_APP_ROOT if defined (for standalone framework or custom app root)
+        // Otherwise fall back to calculating path from vendor directory structure
+        if (defined('ASATRU_APP_ROOT')) {
+            return str_replace('\\', '/', ASATRU_APP_ROOT) . $path;
+        }
         return str_replace('\\', '/', dirname(dirname(dirname(dirname(dirname(__FILE__)))))) . $path;
     }
 

@@ -62,6 +62,11 @@ require_once __DIR__ . '/../src/testing.php';
 $_ENV['APP_DEBUG'] = true;
 error_reporting(E_ALL);
 
+//Set DOCUMENT_ROOT for controller URL parsing
+if (!isset($_SERVER['DOCUMENT_ROOT']) || empty($_SERVER['DOCUMENT_ROOT'])) {
+    $_SERVER['DOCUMENT_ROOT'] = ASATRU_APP_ROOT . '/public';
+}
+
 //Check if we shall create/continue a session
 if ((isset($_ENV['SESSION_ENABLE'])) && ($_ENV['SESSION_ENABLE'])) {
     if ((isset($_ENV['SESSION_DURATION'])) && ($_ENV['SESSION_DURATION'] !== null) && (is_numeric($_ENV['SESSION_DURATION']))) {

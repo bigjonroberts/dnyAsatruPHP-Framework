@@ -25,7 +25,7 @@ final class ConsoleTest extends TestCase
         $result = Asatru\Console\createModel($name);
         $this->assertTrue($result);
 
-        $scriptFile = require(__DIR__ . '/../../../../app/migrations/' . $name . '.php');
+        $scriptFile = require(app_path('/migrations/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $className = $name . '_Migration';
@@ -33,14 +33,14 @@ final class ConsoleTest extends TestCase
         $this->assertTrue(method_exists($newClass, 'up'));
         $this->assertTrue(method_exists($newClass, 'down'));
 
-        $scriptFile = require(__DIR__ . '/../../../../app/models/' . $name . '.php');
+        $scriptFile = require(app_path('/models/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $newClass = new $name();
         $this->assertNotNull($newClass);
 
-        unlink(__DIR__ . '/../../../../app/migrations/' . $name . '.php');
-        unlink(__DIR__ . '/../../../../app/models/' . $name . '.php');
+        unlink(app_path('/migrations/') . $name . '.php');
+        unlink(app_path('/models/') . $name . '.php');
     }
 
     public function testCreateModule()
@@ -50,7 +50,7 @@ final class ConsoleTest extends TestCase
         $result = Asatru\Console\createModule($name);
         $this->assertTrue($result);
 
-        $scriptFile = require(__DIR__ . '/../../../../app/modules/' . $name . '.php');
+        $scriptFile = require(app_path('/modules/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $className = $name;
@@ -58,7 +58,7 @@ final class ConsoleTest extends TestCase
         $this->assertIsObject($newClass);
         $this->assertInstanceOf($className, $newClass);
 
-        unlink(__DIR__ . '/../../../../app/modules/' . $name . '.php');
+        unlink(app_path('/modules/') . $name . '.php');
     }
 
     public function testCreateController()
@@ -68,7 +68,7 @@ final class ConsoleTest extends TestCase
         $result = Asatru\Console\createController($name);
         $this->assertTrue($result);
 
-        unlink(__DIR__ . '/../../../../app/controller/' . $name . '.php');
+        unlink(app_path('/controller/') . $name . '.php');
     }
 
     public function testCreateLang()
@@ -78,11 +78,11 @@ final class ConsoleTest extends TestCase
         $result = Asatru\Console\createLang($ident);
         $this->assertTrue($result);
 
-        $scriptReturn = require(__DIR__ . '/../../../../app/lang/' . $ident . '/app.php');
+        $scriptReturn = require(app_path('/lang/') . $ident . '/app.php');
         $this->assertIsArray($scriptReturn);
 
-        unlink(__DIR__ . '/../../../../app/lang/' . $ident . '/app.php');
-        rmdir(__DIR__ . '/../../../../app/lang/' . $ident);
+        unlink(app_path('/lang/') . $ident . '/app.php');
+        rmdir(app_path('/lang/') . $ident);
     }
 
     public function testCreateValidator()
@@ -93,7 +93,7 @@ final class ConsoleTest extends TestCase
         $result = Asatru\Console\createValidator($name, $ident);
         $this->assertTrue($result);
 
-        $scriptFile = require(__DIR__ . '/../../../../app/validators/' . $name . '.php');
+        $scriptFile = require(app_path('/validators/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $className = $name . 'Validator';
@@ -105,7 +105,7 @@ final class ConsoleTest extends TestCase
         $this->assertTrue($newClass->verify(null));
         $this->assertEquals(null, $newClass->getError());
 
-        unlink(__DIR__ . '/../../../../app/validators/' . $name . '.php');
+        unlink(app_path('/validators/') . $name . '.php');
     }
 
     public function testCreateAuthSession()
@@ -122,7 +122,7 @@ final class ConsoleTest extends TestCase
         $name = 'Auth';
         $migration = 'Auth';
 
-        $scriptFile = require(__DIR__ . '/../../../../app/migrations/' . $name . '.php');
+        $scriptFile = require(app_path('/migrations/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $className = $name . '_Migration';
@@ -130,7 +130,7 @@ final class ConsoleTest extends TestCase
         $this->assertTrue(method_exists($newClass, 'up'));
         $this->assertTrue(method_exists($newClass, 'down'));
 
-        $scriptFile = require(__DIR__ . '/../../../../app/models/' . $name . '.php');
+        $scriptFile = require(app_path('/models/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $newClass = new $name();
@@ -152,7 +152,7 @@ final class ConsoleTest extends TestCase
         $name = 'Session';
         $migration = 'Session';
 
-        $scriptFile = require(__DIR__ . '/../../../../app/migrations/' . $name . '.php');
+        $scriptFile = require(app_path('/migrations/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $className = $name . '_Migration';
@@ -160,7 +160,7 @@ final class ConsoleTest extends TestCase
         $this->assertTrue(method_exists($newClass, 'up'));
         $this->assertTrue(method_exists($newClass, 'down'));
 
-        $scriptFile = require(__DIR__ . '/../../../../app/models/' . $name . '.php');
+        $scriptFile = require(app_path('/models/') . $name . '.php');
         $this->assertEquals(1, $scriptFile);
 
         $newClass = new $name();
@@ -180,12 +180,12 @@ final class ConsoleTest extends TestCase
         $sessionName = 'Session';
         $authName = 'Auth';
 
-        unlink(__DIR__ . '/../../../../app/migrations/' . $sessionName . '.php');
-        unlink(__DIR__ . '/../../../../app/models/' . $sessionName . '.php');
+        unlink(app_path('/migrations/') . $sessionName . '.php');
+        unlink(app_path('/models/') . $sessionName . '.php');
         $this->addToAssertionCount(2);
 
-        unlink(__DIR__ . '/../../../../app/migrations/' . $authName . '.php');
-        unlink(__DIR__ . '/../../../../app/models/' . $authName . '.php');
+        unlink(app_path('/migrations/') . $authName . '.php');
+        unlink(app_path('/models/') . $authName . '.php');
         $this->addToAssertionCount(2);
     }
 
@@ -196,14 +196,14 @@ final class ConsoleTest extends TestCase
         $result = Asatru\Console\createTest($name);
         $this->assertTrue($result);
 
-        $this->assertTrue(file_exists(__DIR__ . '/../../../../app/tests/bootstrap.php'));
+        $this->assertTrue(file_exists(app_path('/tests/bootstrap.php')));
 
-        $scriptFile = require(__DIR__ . '/../../../../app/tests/' . $name . 'Test.php');
+        $scriptFile = require(app_path('/tests/') . $name . 'Test.php');
         $this->assertEquals(1, $scriptFile);
 
         $className = $name . 'Test';
         $this->assertTrue(class_exists($className));
 
-        unlink(__DIR__ . '/../../../../app/tests/' . $name . 'Test.php');
+        unlink(app_path('/tests/') . $name . 'Test.php');
     }
 }
