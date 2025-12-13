@@ -20,7 +20,7 @@ final class ConsoleTest extends TestCase
 {
     public function testCreateModel()
     {
-        $name = 'Testmodel';
+        $name = 'Samplemodel';
 
         $result = Asatru\Console\createModel($name);
         $this->assertTrue($result);
