@@ -1,3 +1,7 @@
 /vendor
+/app
+/public
 .phpunit.result.cache
 .env.testing
+.env
+coverage
